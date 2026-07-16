@@ -2233,23 +2233,19 @@ local function extendTab(tab)
 				if ch:IsA("ImageLabel") or ch:IsA("TextLabel") then ch.ZIndex = 2 end
 			end
 
-			-- CanvasGroup so the sweeping fill is clipped to the card's rounded
-			-- corners (ClipsDescendants ignores UICorner, a CanvasGroup does not).
-			local fillClip = create("CanvasGroup", {
-				BackgroundTransparency = 1,
-				Size = UDim2.fromScale(1, 1),
-				ZIndex = 1, -- equal to the card so it draws in front of the card bg
-				Parent = card,
-			})
-			round(fillClip, GenStyle.cardRadius)
+			-- the sweeping accent fill, rounded to match the card so its corners
+			-- stay curved. (A CanvasGroup clip can silently fall back to unclipped
+			-- square rendering on some executor builds, which is why the corners
+			-- looked square - rounding the fill itself is reliable.)
 			local fill = create("Frame", {
 				BackgroundColor3 = Theme.Accent,
 				BackgroundTransparency = 0.55,
 				BorderSizePixel = 0,
 				Size = UDim2.new(0, 0, 1, 0),
 				ZIndex = 1,
-				Parent = fillClip,
+				Parent = card,
 			})
+			round(fill, GenStyle.cardRadius)
 			if label then label.ZIndex = 2 end
 
 			local clicker = create("TextButton", {
@@ -2590,21 +2586,28 @@ local function extendTab(tab)
 			SpoilerSettings = SpoilerSettings or {}
 			local name = SpoilerSettings.Name or SpoilerSettings.Title or "Spoiler"
 			local revealed = SpoilerSettings.Revealed == true
-			local SPOIL_TW = TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+			local revealText = SpoilerSettings.RevealText or "Tap to reveal"
+			local hideText = SpoilerSettings.HideText or "Tap again to hide"
+			local SPOIL_TW = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 			local card = create("Frame", { AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1,0,0,0), LayoutOrder = nextOrder(), Parent = page })
 			card:SetAttribute("SearchName", name .. " " .. tostring(SpoilerSettings.Text or ""))
-			paint(card, "BackgroundColor3", "Card"); cardBase(card); padAll(card, 12, 12, 12, 14)
-			create("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0,10), Parent = card })
-			local header = create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1,0,0,18), LayoutOrder = 1, Parent = card })
-			local hlabel = create("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0,0.5), Position = UDim2.new(0,0,0.5,0), Size = UDim2.new(1,-30,0,18), Font = FONT_MEDIUM, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Text = name, Parent = header })
+			paint(card, "BackgroundColor3", "Card"); cardBase(card); padAll(card, 12, 14, 12, 14); hoverable(card)
+			create("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0,0), Parent = card })
+
+			-- clickable header row: name on the left, a "tap to reveal" hint plus a chevron on the right.
+			local header = create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1,0,0,22), LayoutOrder = 1, Parent = card })
+			local hlabel = create("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0,0.5), Position = UDim2.new(0,0,0.5,0), Size = UDim2.new(1,-150,0,20), Font = FONT_MEDIUM, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Text = name, Parent = header })
 			paint(hlabel, "TextColor3", "TextBody")
-			local eyeBtn = create("TextButton", { BackgroundTransparency = 1, Text = "", AnchorPoint = Vector2.new(1,0.5), Position = UDim2.new(1,0,0.5,0), Size = UDim2.fromOffset(24,24), Parent = header })
-			local eyeIcon = makeIcon(eyeBtn, "eye-off", 17, Theme.TextSub)
-			if eyeIcon then eyeIcon.AnchorPoint = Vector2.new(0.5,0.5); eyeIcon.Position = UDim2.fromScale(0.5,0.5) end
-			eyeBtn.MouseEnter:Connect(function() if eyeIcon then tween(eyeIcon, TI_FAST, { ImageColor3 = Theme.TextTitle }) end end)
-			eyeBtn.MouseLeave:Connect(function() if eyeIcon then tween(eyeIcon, TI_FAST, { ImageColor3 = revealed and Theme.Accent or Theme.TextSub }) end end)
-			local stage = create("Frame", { BackgroundTransparency = 1, ClipsDescendants = true, AutomaticSize = Enum.AutomaticSize.None, Size = UDim2.new(1,0,0,44), LayoutOrder = 2, Parent = card })
-			local content = create("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0,0), Size = UDim2.new(1,0,0,0), ZIndex = 1, Parent = stage })
+			local chevron = makeIcon(header, "chevron-down", 18, Theme.TextSub)
+			if chevron then chevron.AnchorPoint = Vector2.new(1,0.5); chevron.Position = UDim2.new(1,0,0.5,0) end
+			local hint = create("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1,0.5), Position = UDim2.new(1,-26,0.5,0), AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0,0,0,18), Font = FONT_MEDIUM, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Right, Text = revealText, Parent = header })
+			paint(hint, "TextColor3", "TextSub")
+
+			-- clipped stage: content lives inside and is genuinely hidden (clipped to 0px) when collapsed,
+			-- so nothing bleeds through the way the old cover-overlay did on executor builds.
+			local stage = create("Frame", { BackgroundTransparency = 1, ClipsDescendants = true, AutomaticSize = Enum.AutomaticSize.None, Size = UDim2.new(1,0,0,0), LayoutOrder = 2, Parent = card })
+			local content = create("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0,0), Size = UDim2.new(1,0,0,0), Parent = stage })
+			create("UIPadding", { PaddingTop = UDim.new(0,10), Parent = content })
 			local contentLayout = create("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0,8), Parent = content })
 			if SpoilerSettings.Text and SpoilerSettings.Text ~= "" then
 				local txt = create("TextLabel", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1,0,0,0), Font = FONT_REGULAR, TextSize = 14, LineHeight = 1.14, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Text = SpoilerSettings.Text, LayoutOrder = 1, Parent = content })
@@ -2612,67 +2615,55 @@ local function extendTab(tab)
 			end
 			local inner = create("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1,0,0,0), LayoutOrder = 2, Parent = content })
 			create("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0,8), Parent = inner })
-			local coverBar = create("Frame", { Size = UDim2.new(1,0,0,44), Position = UDim2.fromOffset(0,0), BackgroundColor3 = Theme.CardInset, ZIndex = 3, Parent = stage })
-			paint(coverBar, "BackgroundColor3", "CardInset")
-			round(coverBar, math.max(6, GenStyle.cardRadius - 2))
-			create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255,255,255), Color3.fromRGB(232,232,232)), Parent = coverBar })
-			local coverStroke = create("UIStroke", { Color = Color3.fromRGB(255,255,255), Transparency = 0.9, Thickness = 1, Parent = coverBar }); paint(coverStroke, "Color", "Stroke")
-			local pill = create("Frame", { AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5), AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0,0,0,28), BackgroundColor3 = Theme.CardHover, ZIndex = 3, Parent = coverBar })
-			paint(pill, "BackgroundColor3", "CardHover"); roundFull(pill)
-			create("UIStroke", { Color = Color3.fromRGB(255,255,255), Transparency = 0.86, Thickness = 1, Parent = pill })
-			local pillScale = create("UIScale", { Scale = 1, Parent = pill })
-			create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0,7), Parent = pill })
-			create("UIPadding", { PaddingLeft = UDim.new(0,13), PaddingRight = UDim.new(0,15), Parent = pill })
-			local pillIcon = makeIcon(pill, "eye-off", 15, Theme.Accent)
-			if pillIcon then pillIcon.LayoutOrder = 1; pillIcon.ZIndex = 3 end
-			paint(pillIcon, "ImageColor3", "Accent")
-			local pillLabel = create("TextLabel", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0,0,0,18), Font = FONT_MEDIUM, TextSize = 13, Text = SpoilerSettings.RevealText or "Spoiler, tap to reveal", LayoutOrder = 2, ZIndex = 3, Parent = pill })
-			paint(pillLabel, "TextColor3", "TextBody")
-			local coverBtn = create("TextButton", { BackgroundTransparency = 1, Text = "", Size = UDim2.fromScale(1,1), ZIndex = 4, Parent = coverBar })
-			coverBtn.MouseEnter:Connect(function() tween(coverBar, TI_FAST, { BackgroundColor3 = Theme.CardHover }); tween(pillScale, TI_FAST, { Scale = 1.04 }) end)
-			coverBtn.MouseLeave:Connect(function() tween(coverBar, TI_FAST, { BackgroundColor3 = Theme.CardInset }); tween(pillScale, TI_FAST, { Scale = 1 }) end)
-			-- reliable content height: prefer the list layout's AbsoluteContentSize (valid even while the stage clips),
-			-- fall back to AbsoluteSize, so a 0px clipped/pre-layout measure never pins the unfold to 44px on executor builds
+
+			-- reliable content height even while the stage clips to 0 (executor builds report a 0px
+			-- AbsoluteSize for a clipped frame, so prefer the layout's own content size).
 			local function measureContent()
-				local h = contentLayout.AbsoluteContentSize.Y
-				if h < 1 then h = content.AbsoluteSize.Y end
-				return math.max(h, 44)
+				local h = contentLayout.AbsoluteContentSize.Y + 10 -- + the top padding
+				if h < 11 then h = content.AbsoluteSize.Y end
+				return math.max(h, 1)
 			end
 			local sEpoch = 0
 			local function apply(state, animate)
 				revealed = state and true or false
 				sEpoch = sEpoch + 1
 				local e = sEpoch
-				if eyeIcon then applyLucide(eyeIcon, revealed and "eye" or "eye-off"); eyeIcon.ImageColor3 = revealed and Theme.Accent or Theme.TextSub end
+				hint.Text = revealed and hideText or revealText
+				tween(hint, TI_FAST, { TextColor3 = revealed and Theme.Accent or Theme.TextSub })
+				if chevron then tween(chevron, SPOIL_TW, { Rotation = revealed and 180 or 0, ImageColor3 = revealed and Theme.Accent or Theme.TextSub }) end
 				if revealed then
-					coverBtn.Active = false
 					if animate then
 						local H = measureContent()
 						stage.AutomaticSize = Enum.AutomaticSize.None
-						stage.Size = UDim2.new(1,0,0, math.max(stage.AbsoluteSize.Y, 44))
-						coverBar.Visible = true; coverBar.Position = UDim2.fromOffset(0,0)
+						stage.Size = UDim2.new(1,0,0, math.max(stage.AbsoluteSize.Y, 0))
 						tween(stage, SPOIL_TW, { Size = UDim2.new(1,0,0,H) })
-						tween(coverBar, SPOIL_TW, { Position = UDim2.fromOffset(0,-50) })
-						task.delay(0.38, function() if e == sEpoch and revealed then coverBar.Visible = false; stage.Size = UDim2.new(1,0,0,0); stage.AutomaticSize = Enum.AutomaticSize.Y end end)
+						task.delay(0.36, function() if e == sEpoch and revealed then stage.AutomaticSize = Enum.AutomaticSize.Y; stage.Size = UDim2.new(1,0,0,0) end end)
 					else
-						coverBar.Visible = false; stage.AutomaticSize = Enum.AutomaticSize.Y; stage.Size = UDim2.new(1,0,0,0)
+						stage.AutomaticSize = Enum.AutomaticSize.Y; stage.Size = UDim2.new(1,0,0,0)
 					end
 				else
-					coverBtn.Active = true
+					stage.AutomaticSize = Enum.AutomaticSize.None
 					if animate then
-						local curH = math.max(stage.AbsoluteSize.Y, 44)
-						stage.AutomaticSize = Enum.AutomaticSize.None; stage.Size = UDim2.new(1,0,0,curH)
-						coverBar.Visible = true; coverBar.Position = UDim2.fromOffset(0,-50); coverBar.BackgroundColor3 = Theme.CardInset; pillScale.Scale = 1
-						tween(coverBar, SPOIL_TW, { Position = UDim2.fromOffset(0,0) })
-						tween(stage, SPOIL_TW, { Size = UDim2.new(1,0,0,44) })
+						stage.Size = UDim2.new(1,0,0, math.max(stage.AbsoluteSize.Y, 0))
+						tween(stage, SPOIL_TW, { Size = UDim2.new(1,0,0,0) })
 					else
-						stage.AutomaticSize = Enum.AutomaticSize.None; stage.Size = UDim2.new(1,0,0,44); coverBar.Visible = true; coverBar.Position = UDim2.fromOffset(0,0)
+						stage.Size = UDim2.new(1,0,0,0)
 					end
 				end
 			end
 			apply(revealed, false)
-			coverBtn.MouseButton1Click:Connect(function() apply(true, true) end)
-			eyeBtn.MouseButton1Click:Connect(function() apply(not revealed, true) end)
+
+			local headerBtn = create("TextButton", { BackgroundTransparency = 1, Text = "", Size = UDim2.fromScale(1,1), ZIndex = 5, Parent = header })
+			headerBtn.MouseEnter:Connect(function()
+				tween(hlabel, TI_FAST, { TextColor3 = Theme.TextTitle })
+				if not revealed and chevron then tween(chevron, TI_FAST, { ImageColor3 = Theme.TextTitle }) end
+			end)
+			headerBtn.MouseLeave:Connect(function()
+				tween(hlabel, TI_FAST, { TextColor3 = Theme.TextBody })
+				if not revealed and chevron then tween(chevron, TI_FAST, { ImageColor3 = Theme.TextSub }) end
+			end)
+			headerBtn.MouseButton1Click:Connect(function() apply(not revealed, true) end)
+
 			local api = buildTabAPI(inner, false)
 			api.Card = card
 			function api:Reveal() if not revealed then apply(true, true) end end
