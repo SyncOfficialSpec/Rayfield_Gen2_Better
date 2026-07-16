@@ -28,6 +28,17 @@ Everything from official Gen2 works exactly as documented. On top of that you ge
 | `Tab:CreateBarChart{ Name, Data = {..numbers..} }` | Bar chart |
 | `Tab:CreateStackedChart{ Name, Series = {"A","B"}, Rows = { {Name, Values={..}}, ... } }` | Stacked bar chart |
 
+## Mobile
+
+The official base has no small screen handling, so Better adds it: the window scales itself down automatically on phones and tablets, and the extra elements (charts, tooltips) respond to touch. Scripts can adjust the scale too:
+
+```lua
+Rayfield:SetUIScale(0.9)   -- multiplies the automatic fit
+Rayfield:GetUIScale()      -- effective scale right now
+```
+
+Both methods also exist on the window handle.
+
 ## Example
 
 ```lua

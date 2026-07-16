@@ -112,6 +112,83 @@ local function applyLucide(img, names, onApplied)
 end
 local G3Connections = {}
 local function connect(signal, fn) local c = signal:Connect(fn); table.insert(G3Connections, c); return c end
+
+-- Mobile scaling. The official base has no small-screen handling, so a UIScale is
+-- attached to each fixed-size top-level frame of the official ScreenGui and driven
+-- from the viewport. Full-scale overlays are left alone so backdrops keep covering
+-- the screen. Extras that measure AbsoluteSize divide by currentUiScale() to get
+-- design units back, otherwise anything they write into offsets scales twice.
+local uiScaleObjects = {}
+local uiScaleGuis = {}
+local autoUiScale, userUiScale = 1, 1
+local uiDesign = Vector2.new(0, 0)
+
+local function currentUiScale()
+	return math.clamp(autoUiScale * userUiScale, 0.5, 1.5)
+end
+
+local function applyUiScale()
+	local s = currentUiScale()
+	for i = #uiScaleObjects, 1, -1 do
+		local o = uiScaleObjects[i]
+		if o.Parent then o.Scale = s else table.remove(uiScaleObjects, i) end
+	end
+end
+
+local function refreshAutoScale()
+	local gui = uiScaleGuis[1]
+	if not gui or uiDesign.X <= 0 then return end
+	local vp = gui.AbsoluteSize
+	if vp.X < 50 or vp.Y < 50 then return end
+	local fit = math.min(1, vp.X / (uiDesign.X + 24), vp.Y / (uiDesign.Y + 48))
+	local snapped = math.max(math.floor(fit * 100 + 0.5) / 100, 0.55)
+	if snapped ~= autoUiScale then
+		autoUiScale = snapped
+		applyUiScale()
+	end
+end
+
+local function scaleTopLevel(child)
+	if not child:IsA("GuiObject") then return end
+	if child.Size.X.Scale > 0.9 or child.Size.Y.Scale > 0.9 then return end
+	local scaler = new("UIScale", { Scale = currentUiScale() }, child)
+	table.insert(uiScaleObjects, scaler)
+	task.defer(function()
+		if not child.Parent then return end
+		local sz = child.AbsoluteSize / currentUiScale()
+		if sz.X * sz.Y > uiDesign.X * uiDesign.Y then
+			uiDesign = sz
+			refreshAutoScale()
+		end
+	end)
+end
+
+local function hookWindowGui(gui)
+	for _, g in ipairs(uiScaleGuis) do
+		if g == gui then return end
+	end
+	table.insert(uiScaleGuis, gui)
+	for _, child in ipairs(gui:GetChildren()) do scaleTopLevel(child) end
+	connect(gui.ChildAdded, scaleTopLevel)
+	connect(gui:GetPropertyChangedSignal("AbsoluteSize"), refreshAutoScale)
+	refreshAutoScale()
+end
+
+local function setUserUiScale(f)
+	userUiScale = math.clamp(tonumber(f) or 1, 0.5, 1.5)
+	applyUiScale()
+end
+
+local function guiContainer()
+	if RunService:IsStudio() then
+		return LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	end
+	if typeof(gethui) == "function" then
+		local ok, ui = pcall(gethui)
+		if ok and ui then return ui end
+	end
+	return game:GetService("CoreGui")
+end
 local function measureText(text, size, font)
 	local ok, v = pcall(function() return TextService:GetTextSize(text, size, font, Vector2.new(math.huge, math.huge)) end)
 	return (ok and v) or Vector2.new(#tostring(text) * size * 0.5, size)
@@ -557,7 +634,7 @@ local function extendTab(tab)
 				if open == state then return end
 				open = state
 				if open then
-					local ah = measureWrapped(answer, 14, FONT, math.max(c.AbsoluteSize.X - 34, 50))
+					local ah = measureWrapped(answer, 14, FONT, math.max(c.AbsoluteSize.X / currentUiScale() - 34, 50))
 					a.Size = UDim2.new(1, -32, 0, ah + 4)
 					tween(c, TI_MORPH, { Size = UDim2.new(1, -20, 0, 52 + ah + 16) })
 					tween(plus, TI_MORPH, { Rotation = 135, ImageColor3 = ACCENT, ImageTransparency = 0 })
@@ -712,7 +789,7 @@ local function extendTab(tab)
 		local setValue = odometerValue(valueLabel, fmt(points[#points]))
 
 		local function redraw(animate)
-			local w, h = plot.AbsoluteSize.X, plot.AbsoluteSize.Y
+			local w, h = plot.AbsoluteSize.X / currentUiScale(), plot.AbsoluteSize.Y / currentUiScale()
 			if w < 24 or h < 24 then return end
 			segCanvas.Size = UDim2.fromOffset(w, h)
 			local n = #points
@@ -907,10 +984,9 @@ local function extendTab(tab)
 			end
 		end
 
-		card.InputChanged:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		local function scrub(input)
 			if #xsCache < 2 then return end
-			local rx = input.Position.X - plot.AbsolutePosition.X
+			local rx = (input.Position.X - plot.AbsolutePosition.X) / currentUiScale()
 			local best, bestDist = nil, math.huge
 			for i = 1, #points do
 				local dist = math.abs((xsCache[i] or 0) - rx)
@@ -919,6 +995,17 @@ local function extendTab(tab)
 				end
 			end
 			applyHover(best)
+		end
+		card.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+				scrub(input)
+			end
+		end)
+		card.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then scrub(input) end
+		end)
+		card.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then applyHover(nil) end
 		end)
 		card.MouseLeave:Connect(function()
 			applyHover(nil)
@@ -929,7 +1016,7 @@ local function extendTab(tab)
 			if #dots == 0 then return end
 			animToken = animToken + 1
 			local my = animToken
-			local w = plot.AbsoluteSize.X
+			local w = plot.AbsoluteSize.X / currentUiScale()
 			if w < 24 then return end
 			local D = 0.75
 			segHolder.ClipsDescendants = true
@@ -1111,7 +1198,7 @@ local function extendTab(tab)
 		local setValue = odometerValue(valueLabel, fmt(vals[#vals]))
 
 		local function redraw(animate)
-			local w, h = plot.AbsoluteSize.X, plot.AbsoluteSize.Y
+			local w, h = plot.AbsoluteSize.X / currentUiScale(), plot.AbsoluteSize.Y / currentUiScale()
 			if w < 24 or h < 24 then return end
 			local n = #vals
 			local hi = 0
@@ -1202,13 +1289,23 @@ local function extendTab(tab)
 			end
 		end
 
-		card.InputChanged:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		local function scrub(input)
 			local w = plot.AbsoluteSize.X
 			if w < 24 or #vals == 0 then return end
 			local rx = input.Position.X - plot.AbsolutePosition.X
 			local i = math.clamp(math.floor(rx / (w / #vals)) + 1, 1, #vals)
 			applyHover(i)
+		end
+		card.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+				scrub(input)
+			end
+		end)
+		card.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then scrub(input) end
+		end)
+		card.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then applyHover(nil) end
 		end)
 		card.MouseLeave:Connect(function()
 			applyHover(nil)
@@ -1413,7 +1510,7 @@ local function extendTab(tab)
 			for i, r in ipairs(rowsData) do
 				local m = segMap[i]
 				if m then
-					local trackW = m.track.AbsoluteSize.X
+					local trackW = m.track.AbsoluteSize.X / currentUiScale()
 					if trackW < 10 then trackW = 300 end
 					local contW = math.floor(trackW * r.total / hi + 0.5)
 					local props = {Size = UDim2.new(0, contW, 1, 0)}
@@ -1462,9 +1559,8 @@ local function extendTab(tab)
 			end
 		end
 
-		card.InputChanged:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-			local ry = input.Position.Y - rowsHolder.AbsolutePosition.Y
+		local function scrub(input)
+			local ry = (input.Position.Y - rowsHolder.AbsolutePosition.Y) / currentUiScale()
 			local i = math.floor(ry / 34) + 1
 			local m = segMap[i]
 			if not m then
@@ -1485,6 +1581,17 @@ local function extendTab(tab)
 				end
 			end
 			applyHover(nil)
+		end
+		card.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+				scrub(input)
+			end
+		end)
+		card.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then scrub(input) end
+		end)
+		card.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then applyHover(nil) end
 		end)
 		card.MouseLeave:Connect(function()
 			applyHover(nil)
@@ -1887,8 +1994,9 @@ local function extendTab(tab)
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local rx = math.clamp(input.Position.X - card.AbsolutePosition.X, 0, card.AbsoluteSize.X)
-				local ry = math.clamp(input.Position.Y - card.AbsolutePosition.Y, 0, card.AbsoluteSize.Y)
+				local s = currentUiScale()
+				local rx = math.clamp(input.Position.X - card.AbsolutePosition.X, 0, card.AbsoluteSize.X) / s
+				local ry = math.clamp(input.Position.Y - card.AbsolutePosition.Y, 0, card.AbsoluteSize.Y) / s
 				local circle = create("Frame", {
 					AnchorPoint = Vector2.new(0.5, 0.5),
 					Position = UDim2.fromOffset(rx, ry),
@@ -1898,7 +2006,7 @@ local function extendTab(tab)
 					Parent = rippleClip,
 				})
 				roundFull(circle)
-				local span = math.max(card.AbsoluteSize.X, card.AbsoluteSize.Y) * 2.2
+				local span = math.max(card.AbsoluteSize.X, card.AbsoluteSize.Y) / s * 2.2
 				tween(circle, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 					Size = UDim2.fromOffset(span, span),
 					BackgroundTransparency = 1,
@@ -2542,9 +2650,9 @@ local function extendTab(tab)
 					if animate then
 						-- unfold from the current clipped height up to the natural height,
 						-- then release to AutomaticSize.Y so nested resizes stay synced
-						local target = math.max(content.AbsoluteSize.Y, 0)
+						local target = math.max(content.AbsoluteSize.Y / currentUiScale(), 0)
 						stage.AutomaticSize = Enum.AutomaticSize.None
-						stage.Size = UDim2.new(1, 0, 0, math.max(stage.AbsoluteSize.Y, 0))
+						stage.Size = UDim2.new(1, 0, 0, math.max(stage.AbsoluteSize.Y / currentUiScale(), 0))
 						tween(stage, COLL_TW, { Size = UDim2.new(1, 0, 0, target) })
 						task.delay(0.32, function()
 							if e == cEpoch and open then
@@ -2559,7 +2667,7 @@ local function extendTab(tab)
 				else
 					if animate then
 						-- collapse from the current height down to 0
-						local curH = math.max(stage.AbsoluteSize.Y, 0)
+						local curH = math.max(stage.AbsoluteSize.Y / currentUiScale(), 0)
 						stage.AutomaticSize = Enum.AutomaticSize.None
 						stage.Size = UDim2.new(1, 0, 0, curH)
 						tween(stage, COLL_TW, { Size = UDim2.new(1, 0, 0, 0) })
@@ -2619,8 +2727,8 @@ local function extendTab(tab)
 			-- reliable content height even while the stage clips to 0 (executor builds report a 0px
 			-- AbsoluteSize for a clipped frame, so prefer the layout's own content size).
 			local function measureContent()
-				local h = contentLayout.AbsoluteContentSize.Y + 10 -- + the top padding
-				if h < 11 then h = content.AbsoluteSize.Y end
+				local h = contentLayout.AbsoluteContentSize.Y / currentUiScale() + 10 -- + the top padding
+				if h < 11 then h = content.AbsoluteSize.Y / currentUiScale() end
 				return math.max(h, 1)
 			end
 			local sEpoch = 0
@@ -2635,7 +2743,7 @@ local function extendTab(tab)
 					if animate then
 						local H = measureContent()
 						stage.AutomaticSize = Enum.AutomaticSize.None
-						stage.Size = UDim2.new(1,0,0, math.max(stage.AbsoluteSize.Y, 0))
+						stage.Size = UDim2.new(1,0,0, math.max(stage.AbsoluteSize.Y / currentUiScale(), 0))
 						tween(stage, SPOIL_TW, { Size = UDim2.new(1,0,0,H) })
 						task.delay(0.36, function() if e == sEpoch and revealed then stage.AutomaticSize = Enum.AutomaticSize.Y; stage.Size = UDim2.new(1,0,0,0) end end)
 					else
@@ -2644,7 +2752,7 @@ local function extendTab(tab)
 				else
 					stage.AutomaticSize = Enum.AutomaticSize.None
 					if animate then
-						stage.Size = UDim2.new(1,0,0, math.max(stage.AbsoluteSize.Y, 0))
+						stage.Size = UDim2.new(1,0,0, math.max(stage.AbsoluteSize.Y / currentUiScale(), 0))
 						tween(stage, SPOIL_TW, { Size = UDim2.new(1,0,0,0) })
 					else
 						stage.Size = UDim2.new(1,0,0,0)
@@ -3007,27 +3115,37 @@ local function extendTab(tab)
 				end)
 			end
 			local function moveTo(px, py)
+				local s = currentUiScale()
 				local base = chipParent.AbsolutePosition
-				local bounds = chipParent.AbsoluteSize
-				local cw = math.max(chip.AbsoluteSize.X, 24)
-				local ch = math.max(chip.AbsoluteSize.Y, 16)
-				local x = math.clamp(px - base.X + offX, 2, math.max(2, bounds.X - cw - 2))
-				local y = math.clamp(py - base.Y + offY, 2, math.max(2, bounds.Y - ch - 2))
+				local bounds = chipParent.AbsoluteSize / s
+				local cw = math.max(chip.AbsoluteSize.X / s, 24)
+				local ch = math.max(chip.AbsoluteSize.Y / s, 16)
+				local x = math.clamp((px - base.X) / s + offX, 2, math.max(2, bounds.X - cw - 2))
+				local y = math.clamp((py - base.Y) / s + offY, 2, math.max(2, bounds.Y - ch - 2))
 				tween(chip, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 					Position = UDim2.fromOffset(x, y),
 				})
 			end
-	
+
 			if region then
 				region.InputChanged:Connect(function(input)
-					if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+					if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
 					moveTo(input.Position.X, input.Position.Y)
+				end)
+				region.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.Touch then
+						showChip()
+						moveTo(input.Position.X, input.Position.Y)
+					end
+				end)
+				region.InputEnded:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.Touch then hideChip() end
 				end)
 				region.MouseEnter:Connect(showChip)
 				region.MouseLeave:Connect(hideChip)
 			else
 				connect(UserInputService.InputChanged, function(input)
-					if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+					if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
 					if not shown then showChip() end
 					moveTo(input.Position.X, input.Position.Y)
 				end)
@@ -3708,7 +3826,19 @@ end
 -- wrap CreateWindow -> wrap window.CreateTab -> extend each tab
 local realCreateWindow = Rayfield.CreateWindow
 Rayfield.CreateWindow = function(self, ...)
+	local container = guiContainer()
+	local before = {}
+	if container then
+		for _, c in ipairs(container:GetChildren()) do before[c] = true end
+	end
 	local win = realCreateWindow(self, ...)
+	if container then
+		for _, c in ipairs(container:GetChildren()) do
+			if not before[c] and c:IsA("ScreenGui") then
+				pcall(hookWindowGui, c)
+			end
+		end
+	end
 	if type(win) == "table" then
 		local realCreateTab = win.CreateTab
 		if realCreateTab then
@@ -3716,8 +3846,18 @@ Rayfield.CreateWindow = function(self, ...)
 				return extendTab(realCreateTab(w, ...))
 			end
 		end
+		win.SetUIScale = function(_, f) setUserUiScale(f) end
+		win.GetUIScale = function() return currentUiScale() end
 	end
 	return win
+end
+
+function Rayfield:SetUIScale(f)
+	setUserUiScale(f)
+end
+
+function Rayfield:GetUIScale()
+	return currentUiScale()
 end
 
 return Rayfield
