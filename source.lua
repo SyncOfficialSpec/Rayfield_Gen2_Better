@@ -148,6 +148,7 @@ local function applyResize(Window)
     -- NEMESIS just assigns root.Size; here the library's own bookkeeping has to
     -- follow, or show / hide / minimise will each tween back to 475x500.
     local W, H = main.AbsoluteSize.X, main.AbsoluteSize.Y
+    local defaultW, defaultH = W, H  -- for double-click-to-reset
 
     local function applySize(width, height)
         width, height = math.floor(width + 0.5), math.floor(height + 0.5)
@@ -338,6 +339,18 @@ local function applyResize(Window)
             hoverX, hoverY = input.Position.X, input.Position.Y
             stretchIcon(0.14)
         end
+    end)
+
+    -- UPGRADE: double-click the grip to snap the window back to its default size.
+    local lastClick = 0
+    resizeGrip.MouseButton1Click:Connect(function()
+        local now = tick()
+        if now - lastClick < 0.32 then
+            resizing = false
+            targetW, targetH = defaultW, defaultH
+            startLoop()
+        end
+        lastClick = now
     end)
 
     resizeGrip.InputBegan:Connect(function(input)
