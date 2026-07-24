@@ -38,7 +38,6 @@ end
 
 local function patchDropdown(dropdown)
 
-    local dropdown = parent:CreateDropdown(props)
 
     if dropdown and dropdown._optionFrames then
         function dropdown._openHeight()
