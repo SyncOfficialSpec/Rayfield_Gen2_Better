@@ -436,9 +436,25 @@ local function applyKeybind(Window)
 	end
 end
 
+
+-- UPGRADE: smooth intro. Official Gen2 snaps the window in at full size.
+-- Better scales + fades it up from 90% so it feels like it settles into place.
+local function applyIntro(Window)
+	local TweenService = game:GetService("TweenService")
+	local main = Window.main
+	if not main then return end
+	local target = main.Size
+	main.Size = UDim2.fromOffset(math.floor(target.X.Offset * 0.9), math.floor(target.Y.Offset * 0.9))
+	TweenService:Create(main, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = target,
+	}):Play()
+end
+
+
 local _CreateWindow = Rayfield.CreateWindow
 function Rayfield.CreateWindow(self, settings)
 	local Window = _CreateWindow(self, settings)
+	pcall(applyIntro, Window)
 	pcall(applyResize, Window)
 	pcall(applyKeybind, Window)
 
