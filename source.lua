@@ -475,10 +475,37 @@ local function applyShadow(Window)
 end
 
 
+
+-- UPGRADE: accent edge. Official Gen2 has a flat border. Better adds a thin
+-- gradient stroke around the window that catches light along the top edge,
+-- giving it a crisper, more premium outline.
+local function applyAccent(Window)
+	local main = Window.main
+	if not main then return end
+	if main:FindFirstChild("BetterAccent") then return end
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "BetterAccent"
+	stroke.Thickness = 1.5
+	stroke.Transparency = 0.35
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	local grad = Instance.new("UIGradient")
+	grad.Rotation = 90
+	grad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.2),
+		NumberSequenceKeypoint.new(0.5, 0.75),
+		NumberSequenceKeypoint.new(1, 0.95),
+	})
+	grad.Parent = stroke
+	stroke.Parent = main
+end
+
+
 local _CreateWindow = Rayfield.CreateWindow
 function Rayfield.CreateWindow(self, settings)
 	local Window = _CreateWindow(self, settings)
 	pcall(applyShadow, Window)
+	pcall(applyAccent, Window)
 	pcall(applyIntro, Window)
 	pcall(applyResize, Window)
 	pcall(applyKeybind, Window)
