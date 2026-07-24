@@ -501,6 +501,27 @@ local function applyAccent(Window)
 end
 
 
+
+-- UPGRADE: hover feedback. Official Gen2 buttons only react on click. Better
+-- fades a subtle highlight in when the cursor enters, so rows feel alive.
+local function patchButton(btn)
+	if not btn or not btn.main then return btn end
+	local TweenService = game:GetService("TweenService")
+	local target = btn.interact or btn.main
+	if not target or target:GetAttribute("__hoverBound") then return btn end
+	target:SetAttribute("__hoverBound", true)
+	local base = target.BackgroundTransparency
+	if base >= 1 then base = 0.92 end
+	target.MouseEnter:Connect(function()
+		TweenService:Create(target, TweenInfo.new(0.15), { BackgroundTransparency = math.max(0, base - 0.06) }):Play()
+	end)
+	target.MouseLeave:Connect(function()
+		TweenService:Create(target, TweenInfo.new(0.2), { BackgroundTransparency = base }):Play()
+	end)
+	return btn
+end
+
+
 local _CreateWindow = Rayfield.CreateWindow
 function Rayfield.CreateWindow(self, settings)
 	local Window = _CreateWindow(self, settings)
@@ -514,6 +535,14 @@ function Rayfield.CreateWindow(self, settings)
 	if _CreateTab then
 		function Window.CreateTab(w, tabSettings)
 			local tab = _CreateTab(w, tabSettings)
+			local _CreateButton = tab and tab.CreateButton
+			if _CreateButton then
+				function tab.CreateButton(t, props)
+					local b = _CreateButton(t, props)
+					pcall(patchButton, b)
+					return b
+				end
+			end
 			local _CreateDropdown = tab and tab.CreateDropdown
 			if _CreateDropdown then
 				function tab.CreateDropdown(t, props)
