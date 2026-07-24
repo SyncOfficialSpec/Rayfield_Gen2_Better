@@ -451,9 +451,34 @@ local function applyIntro(Window)
 end
 
 
+
+-- UPGRADE: soft drop shadow. Official Gen2 sits flat on the screen. Better
+-- adds a subtle shadow behind the window so it lifts off the background,
+-- and follows the window as it moves and resizes.
+local function applyShadow(Window)
+	local main = Window.main
+	if not main then return end
+	if main:FindFirstChild("BetterShadow") then return end
+	local shadow = Instance.new("ImageLabel")
+	shadow.Name = "BetterShadow"
+	shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+	shadow.Position = UDim2.fromScale(0.5, 0.5)
+	shadow.Size = UDim2.new(1, 60, 1, 60)
+	shadow.BackgroundTransparency = 1
+	shadow.Image = "rbxassetid://6014261993" -- standard soft shadow slice
+	shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+	shadow.ImageTransparency = 0.45
+	shadow.ScaleType = Enum.ScaleType.Slice
+	shadow.SliceCenter = Rect.new(49, 49, 450, 450)
+	shadow.ZIndex = 0
+	shadow.Parent = main
+end
+
+
 local _CreateWindow = Rayfield.CreateWindow
 function Rayfield.CreateWindow(self, settings)
 	local Window = _CreateWindow(self, settings)
+	pcall(applyShadow, Window)
 	pcall(applyIntro, Window)
 	pcall(applyResize, Window)
 	pcall(applyKeybind, Window)
