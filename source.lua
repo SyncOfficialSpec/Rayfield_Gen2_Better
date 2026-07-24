@@ -386,10 +386,61 @@ local function applyResize(Window)
 end
 
 
+
+-- UPGRADE: global toggle keybind. Official Gen2 only hides from the topbar;
+-- Better binds a key (default Right Control) to show/hide the whole window from
+-- anywhere with a quick scale+fade. Rebind with Window:SetToggleKey(Enum.KeyCode.X).
+local function applyKeybind(Window)
+	local UserInputService = game:GetService("UserInputService")
+	local TweenService = game:GetService("TweenService")
+	local main = Window.main
+	if not main then return end
+
+	Window.__toggleKey = Enum.KeyCode.RightControl
+	local shown = true
+	local busy = false
+	local baseSize = main.Size
+
+	local function show()
+		if shown then return end
+		shown = true
+		main.Visible = true
+		main.Size = UDim2.fromOffset(math.floor(baseSize.X.Offset * 0.92), math.floor(baseSize.Y.Offset * 0.92))
+		TweenService:Create(main, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = baseSize }):Play()
+	end
+
+	local function hide()
+		if not shown then return end
+		shown = false
+		busy = true
+		baseSize = main.Size -- capture current (resized) size
+		local t = TweenService:Create(main, TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Size = UDim2.fromOffset(math.floor(baseSize.X.Offset * 0.9), math.floor(baseSize.Y.Offset * 0.9)),
+		})
+		t.Completed:Connect(function()
+			if not shown then main.Visible = false; main.Size = baseSize end
+			busy = false
+		end)
+		t:Play()
+	end
+
+	UserInputService.InputBegan:Connect(function(input, gpe)
+		if gpe or busy then return end
+		if input.KeyCode == Window.__toggleKey and not (Window.hidden or Window.minimised) then
+			if shown then hide() else show() end
+		end
+	end)
+
+	function Window.SetToggleKey(_, key)
+		if typeof(key) == "EnumItem" then Window.__toggleKey = key end
+	end
+end
+
 local _CreateWindow = Rayfield.CreateWindow
 function Rayfield.CreateWindow(self, settings)
 	local Window = _CreateWindow(self, settings)
 	pcall(applyResize, Window)
+	pcall(applyKeybind, Window)
 
 	local _CreateTab = Window.CreateTab
 	if _CreateTab then
