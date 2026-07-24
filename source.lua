@@ -9,7 +9,7 @@
 	All credit for Rayfield / Rayfield Gen2 goes to Sirius. MIT licensed.
 ]]
 
-local OFFICIAL = "https://gist.githubusercontent.com/jensonhirst/3408be6bafa9feffb20fb4cbfd54e5f8/raw/Gen2-Preview-diablo.luau"
+local OFFICIAL = "https://raw.githubusercontent.com/SyncOfficialSpec/Rayfield_Gen2_Copy/main/source.lua"
 local Rayfield = loadstring(game:HttpGet(OFFICIAL))()
 
 -- The ported Gen3 elements reference a global `RayfieldLibrary` (for flag
