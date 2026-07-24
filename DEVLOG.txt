@@ -2,33 +2,11 @@ Rayfield Gen2 [Better]
 
 Devlog 1 • July 24, 2026
 
-First look at Rayfield Gen2 [Better]. It loads the official Sirius Gen2 as the base, unchanged, then adds a set of extra elements drawn to match the Gen2 card style. Everything the original does still works exactly the same, you just get more to build with.
-
-New Elements:
-Paragraph
-A titled block of wrapped body text for notes and explanations inside a tab.
-
-Label
-A single plain line of text for quick captions between elements.
-
-Divider
-A thin separator line to break a tab into visual groups.
-
-Chart
-A line chart that plots a list of numbers, for trends like score or stats over time.
-
-BarChart
-A vertical bar chart for comparing values side by side, like kills per day.
-
-StackedChart
-A grouped bar chart with named series, for showing two or more values per row at once.
-
-FAQ
-A collapsible question and answer list, each item expands on click.
+Rayfield Gen2 [Better] is the official Rayfield Gen2 by Sirius, loaded completely unchanged, with two upgrades applied automatically to every window. Same library, same look, same API, it just fixes the two things the official Gen2 gets wrong. Nothing else is touched.
 
 Improvements:
-Custom menu background support, load any hosted image behind the menu at full quality straight from a URL.
-Ported elements now share the exact Gen2 spacing, corner radius and card look so nothing feels bolted on.
-Lucide icon loading is cached to disk so icons only fetch once.
-Wrapped text is measured properly so paragraphs size to their real height instead of guessing.
-Added a side by side showcase script that runs identically on the original Gen2 and on Better, so the difference is only ever the library, not the code.
+Window resizing. The official Gen2 window is a fixed size with no way to resize it. Better adds a smooth corner grip that stretches the window to follow your cursor, with a minimum size so the top bar never breaks.
+Better dropdowns. The official Gen2 opens a dropdown to a tiny sliver when it only holds a couple of options, and it slices the rounded corners off the dropdown border. Better opens every dropdown to a proper full-height list and renders the border cleanly inside the clip so nothing gets cut.
+
+Same as official:
+Every element, theme, animation and method is the untouched official Gen2. If Sirius ships an update to Gen2, Better picks it up automatically, since it loads the live official source and only patches the two things above on top.
